@@ -1,0 +1,517 @@
+---
+author: ''
+date: "`r paste0('Week ', lubridate::isoweek(Sys.Date()))`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    smooth_scroll: true
+    number_sections: true
+---
+
+
+```{css, echo=FALSE}
+.center {
+  display: table;
+  margin-right: auto;
+  margin-left: auto;
+}
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#remotes::install_github("giocomai/ganttrify", dependencies = TRUE)
+library(ganttrify)
+library(openxlsx)
+library(ggplot2)
+library(dplyr)
+library(kableExtra)
+
+# Parameters --------------------------------------------------------------
+
+task_week_view_ahead <- 3 # Number of week(s) beyond and behind current week
+task_week_view_behind <- 1 # Number of week(s) behind current week
+
+current_week <- strftime(Sys.Date(), format = "%Y-W%V")
+last_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) - task_week_view_behind)
+next_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) + task_week_view_ahead)
+
+#plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG", "Ideas Hub") # Used to filter report
+plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG") # Used to filter report
+
+ppa_cols <- c("#5F6062", "#008C98", "#982623", "#B2B2B1", "#C49E39", 
+              "#295775", "#175E62", "#8E9CA3", "#556670", "#000000")
+
+```
+
+---
+title: "`r paste0("Task Report for ", plan_name_to_filter)`"
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Import Data -------------------------------------------------------------
+
+data_path <- here::here("data", "MS Planner Exports")
+
+files <- list.files(data_path, pattern = "*.xlsx", full.names = TRUE)
+
+temp <- NULL
+
+for(i in seq_along(files)){
+  
+  xl_file <- readxl::read_xlsx(path = files[i])
+  
+  file.info(files[i])$mtime
+  
+  plan_id <- as.character(xl_file[1, 2])
+  
+  plan_name <- names(xl_file)[2]
+  
+  # Extract the file modification date/time from the file info:
+  planner_version <- file.info(files[i])$mtime
+  
+  col_names <- make.names(xl_file[4, ])
+  
+  xl_file <- xl_file[-1:-4, ]
+  
+  xl_file$plan_version <- planner_version
+  
+  xl_file$plan_id <- plan_id
+  
+  xl_file$Plan.Name <- plan_name
+  
+  names(xl_file) <- c(col_names, "Plan.Version", "Plan.ID", "Plan.Name")
+  
+  temp <- rbind(temp, xl_file)
+  
+}
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+plan.names <- data.frame(Plan.ID = unique(temp$Plan.ID),
+                         Plan.Name = unique(temp$Plan.Name))
+
+temp <- temp %>% mutate(Week.Number.Version = strftime(Plan.Version, format = "%Y-W%V"),
+                        Completed.Date = lubridate::parse_date_time(Completed.Date, orders = c("mdY")),
+                        Week.Number.Completed = strftime(Completed.Date, format = "%Y-W%V"),
+                        Created.Date = lubridate::parse_date_time(Created.Date, orders = c("mdY")),
+                        Week.Number.Created = strftime(Created.Date, format = "%Y-W%V"),
+                        Start.Date = lubridate::parse_date_time(Start.Date, orders = c("mdY")),
+                        Due.Date = lubridate::parse_date_time(Due.Date, orders = c("mdY")),
+                        Week.Number.Due = strftime(Due.Date, format = "%Y-W%V"),
+                        Start.Date = case_when(is.na(Start.Date) ~ Created.Date,
+                                               TRUE ~ Start.Date))
+
+all_planner_tasks <- temp
+
+# How Many Times Have Due Dates Been Pushed Back? -------------------------
+
+latest_plan_version <- all_planner_tasks %>% 
+  select(Plan.ID, Plan.Version,Plan.Name) %>% 
+  group_by(Plan.ID) %>% 
+  filter(Plan.Version == max(Plan.Version)) %>% 
+  ungroup() %>% 
+  distinct()
+
+latest_plan <- all_planner_tasks %>% 
+  group_by(Plan.ID) %>% 
+  filter(Plan.Version == max(Plan.Version)) %>% 
+   ungroup()
+
+# Look up the Plan.ID based on the plan_name_to_filter values entered in parameters:
+selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"), 
+                                          latest_plan_version$Plan.Name), 1])
+
+selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"), 
+                                                    latest_plan_version$Plan.Name), 1])
+
+unique_tasks <- all_planner_tasks %>% select(Task.ID) %>% 
+  distinct()
+
+changed_due_dates <- all_planner_tasks %>% 
+  filter(Plan.ID %in% selected_plan$Plan.ID) %>% 
+  select(Task.ID, Due.Date) %>% 
+  distinct(.keep_all = TRUE) %>%
+  group_by(Task.ID) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  rename(due_date_changes = n) %>% 
+  left_join(latest_plan %>% 
+              filter(Plan.ID %in% selected_plan) %>% 
+              select(Task.ID, Task.Name, Progress, Due.Date, Late))
+
+# Status Over Time --------------------------------------------------------
+
+tasks_per_week <- all_planner_tasks %>%
+                 # select(Plan.ID, Plan.Name, Week.Number.Version, Plan.Version, Progress, Task.ID, Late) %>% 
+                  group_by(Plan.ID, Week.Number.Version, Plan.Name) %>% 
+                  mutate(newest = max(Plan.Version)) %>% 
+                  filter(Plan.Version == newest,
+                         Plan.ID %in% selected_plan$Plan.ID) 
+
+tasks_over_time <- ggplot(data = tasks_per_week, aes(x = Week.Number.Version, fill = Progress)) +
+    labs(title = "Cumulative Tasks by Progress",
+         x = "Plan Version Week",
+         y = "Total Tasks") +
+  scale_fill_manual(values = ppa_cols) +
+    geom_bar() +
+   # facet_wrap(~factor(Plan.Name)) +
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+number_active_tasks <- tasks_per_week %>% 
+  filter(Plan.Version == latest_plan_version$Plan.Version,
+         Progress != "Completed") %>% 
+  count() %>% 
+  rename(Active.Tasks = n)
+
+# Tasks by Person ---------------------------------------------------------
+
+tasks_by_person <- tidyr::separate_rows(data = latest_plan, Assigned.To, sep = ";")
+
+active_tasks_assigned <- tasks_by_person %>% 
+  filter(Progress != "Completed") %>% 
+  group_by(Assigned.To) %>% 
+  count()  
+  # filter(n > 1)
+
+workload_ratio <- number_active_tasks$Active.Tasks / nrow(active_tasks_assigned)
+
+plot_tasks_assigned_to <- tasks_by_person %>% 
+  filter(Progress != "Completed") %>% 
+  group_by(Assigned.To) %>% 
+  count() %>% 
+  rename("Active.Tasks" = n) %>% 
+  ggplot() +
+  geom_col(aes(x = reorder(Assigned.To, -Active.Tasks), y = Active.Tasks)) +
+  geom_hline(yintercept = workload_ratio, colour = ppa_cols[5], size = 1.5) +
+  scale_fill_manual(values = ppa_cols) +
+  labs(title = "Active Tasks Assigned",
+       x = "Assigned To",
+       y = "Count of Active Tasks") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+# Late Tasks ----------------------------------
+
+proportion_late_over_time <- tasks_per_week %>% 
+  group_by(Plan.ID, Week.Number.Version, Plan.Name) %>% 
+  mutate(Late = case_when(Late == "true" ~ "Yes",
+                          TRUE ~ "No")) %>% 
+  filter(Progress != "Completed") %>% 
+  count(Late)
+
+late_versus_ontime <- ggplot(data = proportion_late_over_time, aes(x = Week.Number.Version, y = n, fill = Late)) +
+    labs(title = "Percentage of Late Tasks",
+         x = "Plan Version Week",
+         y = "Total Tasks") +
+    geom_bar(position = "fill",stat = "identity") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    scale_fill_manual(values = ppa_cols) +
+   # facet_wrap(~factor(Plan.Name)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Task KPIs ---------------------------------------------------------------
+
+filtered_latest_plan <- latest_plan %>% 
+  filter(Plan.ID %in% selected_plan$Plan.ID)
+
+min_start_date <- min(c(min(filtered_latest_plan$Due.Date), 
+                        min(filtered_latest_plan$Created.Date),
+                        min(filtered_latest_plan$Completed.Date)), na.rm = TRUE)
+
+max_end_date <- max(c(max(filtered_latest_plan$Due.Date), 
+                      max(filtered_latest_plan$Created.Date), 
+                      max(filtered_latest_plan$Completed.Date)), na.rm = TRUE)
+  
+weeks <- data.frame(Week.Number.Completed = strftime(seq(as.Date(min_start_date), as.Date(max_end_date), by = "week"), format = "%Y-W%V"))
+
+planned_tasks_due <- filtered_latest_plan %>% 
+  group_by(Week.Number.Due, Plan.ID) %>% 
+ filter(stringr::str_detect(Labels, "Unplanned Task", negate = TRUE)) %>% 
+  count() %>% 
+  rename(planned.tasks.due = n,
+         Week.Number.Completed = Week.Number.Due) # This enables joining later
+
+planned_tasks_complete_ontime <- filtered_latest_plan %>% 
+  filter(Progress == "Completed",
+         Week.Number.Due == Week.Number.Completed, # & Week.Number.Version == Week.Number.Completed 
+         stringr::str_detect(Labels, "Unplanned Task", negate = TRUE)) %>% 
+  group_by(Week.Number.Completed, Plan.ID) %>% 
+  count() %>% 
+  rename(Ontime = n)
+
+unplanned_tasks_complete <- filtered_latest_plan %>% 
+  filter(stringr::str_detect(Labels, "Unplanned Task", negate = FALSE),
+         Progress == "Completed"
+         ) %>% 
+  group_by(Week.Number.Completed, Plan.ID) %>% 
+  count() %>% 
+  rename(Unplanned = n)
+
+planned_tasks_complete_late <- filtered_latest_plan %>% 
+  filter(Progress == "Completed",
+         Week.Number.Due < Week.Number.Completed,
+         stringr::str_detect(Labels, "Unplanned Task", negate = TRUE)) %>% 
+  group_by(Week.Number.Completed, Plan.ID) %>% 
+  count() %>% 
+  rename(Late = n)
+
+planned_tasks_complete_early <- filtered_latest_plan %>% 
+  filter(Progress == "Completed",
+         Week.Number.Due > Week.Number.Completed,
+         stringr::str_detect(Labels, "Unplanned Task", negate = TRUE)) %>% 
+  group_by(Week.Number.Completed, Plan.ID) %>% 
+  count() %>% 
+  rename(Early = n)
+
+issues_raised <- filtered_latest_plan %>% 
+  filter(stringr::str_detect(Labels, "Issue", negate = FALSE)
+         ) %>% 
+  group_by(Week.Number.Created, Plan.ID) %>% 
+  count() %>% 
+  rename(Issues.Raised = n)
+
+tasks_kpis <- weeks %>% 
+  left_join(planned_tasks_due) %>% 
+  left_join(planned_tasks_complete_ontime) %>% 
+  left_join(unplanned_tasks_complete) %>% 
+  left_join(planned_tasks_complete_late) %>% 
+  left_join(planned_tasks_complete_early) %>% 
+  rename(Week.Number = Week.Number.Completed)
+
+tasks_by_week <- tasks_kpis %>% 
+  rowwise() %>% 
+  mutate(Total.Tasks.Complete = sum(c_across(Ontime:Early), na.rm = TRUE)) %>% 
+  left_join(issues_raised %>% rename(Week.Number = Week.Number.Created)) %>% 
+  tidyr::replace_na(list(planned.tasks.due = 0,
+                         Ontime = 0,
+                         Unplanned = 0,
+                         Late = 0,
+                         Early = 0,
+                         Total.Tasks.Complete = 0,
+                         Issues.Raised = 0
+                         ))
+
+
+current_week_report <- tasks_by_week  %>% 
+  filter(Week.Number >= last_week &
+           Week.Number <= next_week)
+
+tasks_by_week_pivot <- tasks_by_week %>% 
+  select(!c(planned.tasks.due, Total.Tasks.Complete, Issues.Raised)) %>% 
+  tidyr::pivot_longer(!Week.Number:Plan.ID, 
+                      names_to = "Completed Status", 
+                      values_to = "count")
+
+# GANTT Chart -------------------------------------------------------------
+
+dat_gant <- latest_plan %>% ungroup() %>% 
+  filter(Progress != "Completed", 
+         Due.Date >= as.Date(latest_plan_version$Plan.Version)) %>% 
+  select(Bucket.Name, Task.Name, Start.Date, Due.Date, Progress) %>% 
+  rename(wp = Bucket.Name, 
+         activity = Task.Name, 
+         start_date = Start.Date, 
+         end_date = Due.Date,
+         spot_type = Progress) %>% 
+  mutate(start_date = format(as.Date(start_date), "%Y-%m-%d"),
+         end_date = format(as.Date(end_date), "%Y-%m-%d"))
+
+  ganttrify(project = dat_gant, 
+            by_date = TRUE,
+            hide_wp = F,
+            spots = dat_gant$spot_type,
+            size_text_relative = 1, 
+            axis_text_align = "left"
+            ) +
+    ggplot2::labs(title = plan_name,
+                  subtitle = paste0("Plan Version Date: ", 
+                                    format(as.Date(latest_plan_version$Plan.Version), 
+                                           "%d %B %Y")),
+                  caption = "") +
+    ggplot2::geom_vline(xintercept = as.Date(Sys.Date()), 
+                        linetype = "dashed", 
+               color = "black", size = 1) +
+    coord_cartesian(xlim = c(as.Date(Sys.Date()), 
+                           max(as.Date(dat_gant$end_date))))
+```
+
+# EXECUTIVE SUMMARY
+
+This Task Report summarises information captured by Microsoft Planner's task management software. Data in this report is current up to `r format(as.Date(latest_plan_version$Plan.Version), '%d %B %Y')`.
+
+## Task Progress Overall
+
+The following chart represents Microsoft Planner data by the week that data was exported. The chart shows a snapshot of cumulative tasks over time since the first data export. There are currently `r number_active_tasks$Active.Tasks` active tasks which includes "In Progress" and "Not Started" items.
+
+<div class = 'center'>
+```{r echo=FALSE, fig.align='center'}
+
+
+# gridExtra::grid.arrange(tasks_over_time, late_versus_ontime,
+#              ncol = 2,
+#              nrow = 1,
+#              top = grid::textGrob("Historical Task Analysis", gp = grid::gpar(fontsize = 20),
+#                                   x = 0, hjust = 0))
+
+tasks_over_time
+
+```
+</div>
+
+## Task Summary KPIs by Week
+
+The following table shows task KPIs by week, with the current reporting week highlighted in grey.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+current_week_report %>% 
+  select(Week.Number, planned.tasks.due:Issues.Raised) %>%
+  tidyr::replace_na(list(planned.tasks.due = 0,
+                         Ontime = 0,
+                         Unplanned = 0,
+                         Late = 0,
+                         Early = 0,
+                         Total.Tasks.Complete = 0,
+                         Issues.Raised = 0
+                         )) %>% 
+  rename("Week Number" = Week.Number,
+         "Total Planned Tasks Due" = planned.tasks.due,
+         "Planned Complete" = Ontime,
+         "Unplanned Complete" = Unplanned,
+         "Planned Complete Late" = Late,
+         "Complete Early" = Early,
+         "Total Tasks Complete" = Total.Tasks.Complete,
+         "Issues Raised" = Issues.Raised
+         ) %>% 
+  knitr::kable() %>% 
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+    kable_paper(full_width = TRUE) %>%
+  row_spec(0, background = "#008C98", color = "white") %>% 
+  row_spec(task_week_view_behind + 1, background = "grey", color = "white", bold = TRUE)
+```
+
+
+<div class = 'center'>
+```{r fig.align='center', message=FALSE, warning=FALSE, include=FALSE}
+
+tasks_by_week_plot <- tasks_by_week_pivot %>%
+  filter(Week.Number <= next_week 
+        &
+          Week.Number >= "2021-W20"
+         ) %>%
+  ggplot(aes(x = Week.Number, 
+             y = count, 
+             fill = `Completed Status`)) +
+    labs(title = "Completed Tasks by Status",
+         fill = "Status",
+         y = "Tasks Complete",
+         x = "Week Number") +
+  #geom_col() +
+  geom_bar(position = "fill",stat = "identity") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = ppa_cols) +
+  theme_bw() + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+</div>
+
+<div class = 'center'>
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# late_versus_ontime
+tasks_by_week_plot
+
+```
+</div>
+
+#  CURRENT ISSUES
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+open_issues <- filtered_latest_plan %>% 
+  filter(stringr::str_detect(Labels, "Issue", negate = FALSE),
+         Progress != "Completed")
+
+```
+
+There are `r nrow(open_issues)` open issues, summarised in the following table.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+open_issues %>% 
+  select(Task.Name, Description, Created.Date, Assigned.To) %>%
+  tidyr::replace_na(list(Description = "")) %>% 
+  mutate(Created.Date = format(Created.Date,  "%d %B %Y")) %>% 
+  rename("Issue" = Task.Name,
+         "Assigned To" = Assigned.To,
+         "Raised On" = Created.Date
+         ) %>%
+  knitr::kable() %>% 
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+    kable_paper(full_width = TRUE) %>%
+  row_spec(0, background = "#008C98", color = "white") 
+```
+
+
+
+# TASKS DUE THIS WEEK `r lubridate::isoweek(Sys.Date())`
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+planned_due_this_week <- planned_tasks_due %>% 
+  filter(Week.Number.Completed == current_week) %>% 
+  ungroup() %>% 
+  select(planned.tasks.due)
+
+current_late_tasks <- latest_plan %>% 
+  filter(Late == "true") %>% 
+  count()
+  
+```
+
+This week, there are `r planned_due_this_week` planned tasks due and `r current_late_tasks` late tasks outstanding.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+tbl <- latest_plan %>% 
+  filter(Late == "true" | 
+         stringr::str_detect(Labels, "Unplanned Task") & Week.Number.Completed == current_week |
+         stringr::str_detect(Labels, "Unplanned Task", negate = TRUE) & Week.Number.Due == current_week
+          ) %>% 
+  select(Task.Name, Due.Date, Late, Labels, Week.Number.Completed, Assigned.To, Progress, Week.Number.Due) %>% 
+  mutate(status = case_when(Late == "true" ~ "Late Tasks Incomplete",
+                            stringr::str_detect(Labels, "Unplanned Task") ~ "Unplanned - Complete",
+                            Week.Number.Due == current_week ~ "Due This Week")) %>% 
+  select(Task.Name, status, Assigned.To) %>% 
+  rename("Task Name" = Task.Name, "Assigned To" = Assigned.To) %>% 
+  arrange(status)
+
+  kableExtra::kable(tbl[, c(1, 3)]) %>% 
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  kable_paper(full_width = TRUE) %>%
+  kableExtra::pack_rows(index = table(tbl$status), label_row_css = "background-color: #666; color: #fff;") %>% 
+     kableExtra::row_spec(0, background = "#008C98", color = "white")
+```
+
+<div class = 'center'>
+```{r echo=FALSE, fig.align='center'}
+late_versus_ontime
+```
+</div>
+
+## WORKLOAD
+
+The following chart represents the number of active tasks assigned to team members. It is important to note that a majority of tasks are shared, meaning that some tasks are counted more than once. There are currently `r number_active_tasks$Active.Tasks` active tasks with an average of `r round(workload_ratio)` active tasks per team member.
+
+<div class = 'center'>
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot_tasks_assigned_to
+```
+</div>
