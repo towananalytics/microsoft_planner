@@ -36,11 +36,12 @@ library(openxlsx)
 library(ggplot2)
 library(dplyr)
 library(kableExtra)
+library(zoo)
 
 # Parameters --------------------------------------------------------------
 
-task_week_view_ahead <- 3 # Number of week(s) beyond and behind current week
-task_week_view_behind <- 1 # Number of week(s) behind current week
+task_week_view_ahead <- 2 # Number of week(s) beyond and behind current week
+task_week_view_behind <- 2 # Number of week(s) behind current week
 
 current_week <- strftime(Sys.Date(), format = "%Y-W%V")
 last_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) - task_week_view_behind)
@@ -325,19 +326,40 @@ tasks_by_week_pivot <- tasks_by_week %>%
                       values_to = "count")
 
 completion_ratio <- tasks_by_week %>% 
-    filter(Week.Number <= last_week &
+  ungroup() %>% 
+    filter(Week.Number < current_week &
            Week.Number >= "2021-W21",
             !is.na(Plan.ID)) %>% 
   mutate(completion.ratio = round(Ontime/planned.tasks.due, 2),
-         mean.ratio = mean(completion.ratio, na.rm = TRUE),
-         rolling.mean = zoo::rollmean(completion.ratio, k = 2))
+         # Now return the four week rolling mean
+         rolling.mean = zoo::rollmean(completion.ratio, k = 4, fill = NA, align = c("right"))) %>% 
+  tidyr::drop_na()
+
 
 completion_ratio_plt <- ggplot(completion_ratio) +
-  geom_line(aes(x = Week.Number, y = completion.ratio, group= 1)) +
-   geom_point(aes(x = Week.Number, y = completion.ratio, group= 1)) +
-  geom_hline(yintercept = mean(completion_ratio$mean.ratio, na.rm = TRUE), colour = ppa_cols[5], size = 1.5) +
+  geom_line(aes(x = Week.Number, 
+                y = rolling.mean, 
+                group = 1), colour = ppa_cols[2], size = 1.5
+            ) +
+  geom_point(aes(x = Week.Number,
+                 y = rolling.mean ,
+                 ),
+             colour = ppa_cols[2],
+             size = 4) +
+  # geom_hline(yintercept = mean(completion_ratio$completion.ratio, 
+  #                              na.rm = TRUE), 
+  #            colour = ppa_cols[5], 
+  #            size = 1.5) +
+  labs(title = "Planned Task Completion Rate",
+       subtitle = "Four Week Rolling Average",
+       x = "Week Number",
+       y = "Planned Completion Rate") +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  #ylim(0, 1) +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.5, 
+                                   hjust=1)) 
 
 # GANTT Chart -------------------------------------------------------------
 
@@ -383,13 +405,6 @@ The following chart represents Microsoft Planner data by the week that data was 
 ::: {.center}
 ```{r echo=FALSE, fig.align='center'}
 
-
-# gridExtra::grid.arrange(tasks_over_time, late_versus_ontime,
-#              ncol = 2,
-#              nrow = 1,
-#              top = grid::textGrob("Historical Task Analysis", gp = grid::gpar(fontsize = 20),
-#                                   x = 0, hjust = 0))
-
 tasks_over_time
 
 ```
@@ -421,11 +436,12 @@ wk_report <- current_week_report %>%
          "Planned Complete Late" = Late,
          "Complete Early" = Early,
          "Total Tasks Complete" = Total.Tasks.Complete,
-         "Issues Raised" = Issues.Raised
+         "Issues Raised" = Issues.Raised,
+         "Planned Completion Rate" = completion.ratio
          ) 
 
 wk_report %>% 
-  select(-completion.ratio) %>% 
+  select(-"Planned Completion Rate") %>% 
   knitr::kable() %>% 
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
     kable_paper(full_width = TRUE) %>%
