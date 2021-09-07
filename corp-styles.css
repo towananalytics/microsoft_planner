@@ -1,0 +1,52 @@
+ @import url('https://fonts.googleapis.com/css?family=Montserrat:400,600,700&display=swap');
+
+body { /* Montserrat Text Needs to be imported as above */
+  font-family: Arial;
+  font-size: 11pt;
+}
+/* .logo {
+    position:absolute;top:0px;right:0px;padding:0px;
+    height:120px;background-image: ("C:/Users/nick.dawe/Documents/R Projects Via Git/Microsoft Planner/images/PPA Logo.png");
+} */hr { /* header row used for orange horizontal line and called by either *** or <hr> in RMarkdown doc */
+   border: solid rgb(0,140,152) 0.5px;
+   background-color: rgb(0,140,152);
+   height: 0.5px;
+}
+/* embed this code <hr style="border: solid rgb(0,140,152) 0.5px;background-color: rgb(0,140,152);height: 0.5px;"/> to customise each hr in the RMardown */
+
+h1.title { /* this is the main title */
+  color: rgb(0,140,152);
+  font-size: 14pt;    /* 100% = 12pt font */
+  margin-top: 100px; /* Amount to move the title down 100px is normal */
+  /*margin-right: 100px*/
+  font-weight: bold;
+}h0 {  color: rgb(0,0,0);  font-size: 11pt;  font-weight: bold;  text-transform: uppercase;}
+
+h1 {
+  color: rgb(0,0,0);
+  font-size: 11pt;
+  font-weight: bold;  text-transform: uppercase;
+}h2 {  color: rgb(0,0,0);  font-size: 11pt;  font-weight: bold;  text-transform: capitalize;}h3 {  color: rgb(0,0,0);  font-size: 11pt;  font-weight: bold;  text-transform: capitalize;}h4 {  color: rgb(0,0,00);  font-size: 11pt;  font-weight: bold;  font-style: /*italic*/;}/*----------LOGO above TOC---------*/#TOC::before {  content: "";  display: block;  height: 100px;  margin: 2em 20px 20px 20px;  background-image: url("images\PPA Logo.gif");  background-size: contain;  background-position: center center;  background-repeat: no-repeat;}/*----------Modify TOC---------*/.tocify {  /*position: -webkit-sticky;  position: sticky;   top: 120px; /*Controls where TOC stops when sticky */ */  width: 100% !important;  /*border: none;*/  text-transform: uppercase;}
+h1.btn {
+    border-width: 0 0px 0px 0px;
+    font-weight: /*normal*/;    text-transform: uppercase;
+}
+
+.btn-default {
+    color: rgb(237, 124, 49);
+    background-color: rgb(237, 124, 49);
+    border-color: #ffffff;
+}
+
+.header-section-number::after {
+  content: ".";
+} /*Add a trailing period after heading numbers*/
+.watermark { /* Add a watermark in document watermark needs to be added in head RMarkdown */
+/* add this to the RMarkdown doc -> <div class="watermark">DRAFT</div> */
+  opacity: 0.1;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  font-size: 500%;
+  color: #00407d;
+}

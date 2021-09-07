@@ -1,15 +1,25 @@
 ---
 author: ''
-date: "`r paste0('Week ', lubridate::isoweek(Sys.Date()))`"
+date: ''
 output:
   html_document:
     toc: yes
     toc_float: yes
     smooth_scroll: yes
     number_sections: yes
+    self_contained: yes
+    css: "C:/Users/nick.dawe/Documents/R Projects Via Git/Microsoft Planner/corp-styles.css"
   pdf_document:
     toc: no
 ---
+
+```{r, echo=FALSE}
+htmltools::img(src = knitr::image_uri(here::here("images", "PPA Logo.gif")), 
+               alt = 'logo', 
+               style = 'position:absolute; top:90px; right:50px; padding:0px;')
+```
+
+<hr>
 
 ```{css, echo=FALSE}
 # Control the alignment of charts/figures:
@@ -26,6 +36,15 @@ output:
 @media print {
     .page-break { display: block; break-after: page; }
 }
+
+# @TOC {
+#   right: 270px;
+#   margin: 20px 0px 25px 0px;
+# }
+# 
+# .main-container {
+#     margin-left: 200px;
+#}
 
 ```
 
@@ -56,7 +75,7 @@ ppa_cols <- c("#5F6062", "#008C98", "#982623", "#B2B2B1", "#C49E39",
 ```
 
 ---
-title: "`r paste0("Task Report for ", plan_name_to_filter)`"
+title: "`r paste0("TASK REPORT <br>", toupper(plan_name_to_filter), ': WEEK ', lubridate::isoweek(Sys.Date()))`"
 ---
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -120,7 +139,7 @@ all_planner_tasks <- temp
 # How Many Times Have Due Dates Been Pushed Back? -------------------------
 
 latest_plan_version <- all_planner_tasks %>% 
-  select(Plan.ID, Plan.Version,Plan.Name) %>% 
+  select(Plan.ID, Plan.Version, Plan.Name) %>% 
   group_by(Plan.ID) %>% 
   filter(Plan.Version == max(Plan.Version)) %>% 
   ungroup() %>% 
@@ -186,8 +205,8 @@ active_tasks_assigned <- tasks_by_person %>%
   filter(Progress != "Completed") %>% 
   group_by(Assigned.To) %>% 
   count()  
-  # filter(n > 1)
 
+# Average number of tasks per person:
 workload_ratio <- number_active_tasks$Active.Tasks / nrow(active_tasks_assigned)
 
 plot_tasks_assigned_to <- tasks_by_person %>% 
@@ -199,10 +218,8 @@ plot_tasks_assigned_to <- tasks_by_person %>%
   rename("Active.Tasks" = n) %>% 
   group_by(Assigned.To) %>% 
   mutate(total_tasks = sum(Active.Tasks)) %>% 
-  # mutate(factors = forcats::fct_reorder(Late, Active.Tasks, .fun = sum)) %>% 
   ggplot() +
   geom_col(aes(x = reorder(Assigned.To, -total_tasks), y = Active.Tasks, fill = Late)) +
-  # geom_col(aes(x = reorder(Assigned.To, -Active.Tasks), y = Active.Tasks, fill = Late)) +
   geom_hline(yintercept = workload_ratio, colour = ppa_cols[5], size = 1.5) +
   scale_fill_manual(values = ppa_cols) +
   labs(title = "Active Tasks Assigned",
@@ -228,7 +245,6 @@ late_versus_ontime <- ggplot(data = proportion_late_over_time, aes(x = Week.Numb
     geom_bar(position = "fill",stat = "identity") +
     scale_y_continuous(labels = scales::percent_format()) +
     scale_fill_manual(values = ppa_cols) +
-   # facet_wrap(~factor(Plan.Name)) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
@@ -256,7 +272,7 @@ planned_tasks_due <- filtered_latest_plan %>%
 
 planned_tasks_complete_ontime <- filtered_latest_plan %>% 
   filter(Progress == "Completed",
-         Week.Number.Due == Week.Number.Completed, # & Week.Number.Version == Week.Number.Completed 
+         Week.Number.Due == Week.Number.Completed,
          stringr::str_detect(Labels, "Unplanned Task", negate = TRUE)) %>% 
   group_by(Week.Number.Completed, Plan.ID) %>% 
   count() %>% 
@@ -314,10 +330,33 @@ tasks_by_week <- tasks_kpis %>%
                          Issues.Raised = 0
                          ))
 
-
 current_week_report <- tasks_by_week  %>% 
   filter(Week.Number >= last_week &
            Week.Number <= next_week)
+
+wk_report <- current_week_report %>% 
+  select(Week.Number, planned.tasks.due:Issues.Raised) %>%
+  tidyr::replace_na(list(planned.tasks.due = 0,
+                         Ontime = 0,
+                         Unplanned = 0,
+                         Late = 0,
+                         Early = 0,
+                         Total.Tasks.Complete = 0,
+                         Issues.Raised = 0
+                         )) %>% 
+  mutate(completion.ratio = round(Ontime/planned.tasks.due, 2),
+         completion.percent = scales::percent(Ontime/planned.tasks.due, accuracy = 1)) %>% 
+  rename("Week Number" = Week.Number,
+         "Total Planned Tasks Due" = planned.tasks.due,
+         "Planned Complete" = Ontime,
+         "Unplanned Complete" = Unplanned,
+         "Planned Complete Late" = Late,
+         "Complete Early" = Early,
+         "Total Tasks Complete" = Total.Tasks.Complete,
+         "Issues Raised" = Issues.Raised,
+         "Completion Rate" = completion.ratio,
+         "Completion Percentage" = completion.percent
+         ) 
 
 tasks_by_week_pivot <- tasks_by_week %>% 
   select(!c(planned.tasks.due, Total.Tasks.Complete, Issues.Raised)) %>% 
@@ -328,13 +367,12 @@ tasks_by_week_pivot <- tasks_by_week %>%
 completion_ratio <- tasks_by_week %>% 
   ungroup() %>% 
     filter(Week.Number < current_week &
-           Week.Number >= "2021-W21",
+           Week.Number >= "2021-W25",
             !is.na(Plan.ID)) %>% 
   mutate(completion.ratio = round(Ontime/planned.tasks.due, 2),
          # Now return the four week rolling mean
          rolling.mean = zoo::rollmean(completion.ratio, k = 4, fill = NA, align = c("right"))) %>% 
   tidyr::drop_na()
-
 
 completion_ratio_plt <- ggplot(completion_ratio) +
   geom_line(aes(x = Week.Number, 
@@ -353,7 +391,7 @@ completion_ratio_plt <- ggplot(completion_ratio) +
   labs(title = "Planned Task Completion Rate",
        subtitle = "Four Week Rolling Average",
        x = "Week Number",
-       y = "Planned Completion Rate") +
+       y = "Completion Rate") +
   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
   #ylim(0, 1) +
   theme_bw() +
@@ -400,7 +438,9 @@ This Task Report summarises information captured by Microsoft Planner's task man
 
 ## Task Progress Overall
 
-The following chart represents Microsoft Planner data by the week that data was exported. The chart shows a snapshot of cumulative tasks over time since the first data export. There are currently `r number_active_tasks$Active.Tasks` active tasks which includes "In Progress" and "Not Started" items.
+During the previous reporting week (`r wk_report[2, 1]`), **`r wk_report[2, 10]`** of planned tasks were completed on-time, with a four week rolling average completion rate of **`r  scales::percent(as.numeric(completion_ratio[6, 11]))`**.
+
+The following chart represents Microsoft Planner data by the week that data was exported. The chart shows a snapshot of cumulative tasks over time since the first data export. There are currently **`r number_active_tasks$Active.Tasks` active tasks** which includes "In Progress" and "Not Started" items.
 
 ::: {.center}
 ```{r echo=FALSE, fig.align='center'}
@@ -414,39 +454,17 @@ tasks_over_time
 
 ## Task Summary KPIs by Week
 
-The following table shows task KPIs by week, with the current reporting week highlighted in grey.
+The following table shows task KPIs by week, with the previous complete week highlighted in grey.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-wk_report <- current_week_report %>% 
-  select(Week.Number, planned.tasks.due:Issues.Raised) %>%
-  tidyr::replace_na(list(planned.tasks.due = 0,
-                         Ontime = 0,
-                         Unplanned = 0,
-                         Late = 0,
-                         Early = 0,
-                         Total.Tasks.Complete = 0,
-                         Issues.Raised = 0
-                         )) %>% 
-  mutate(completion.ratio = round(Ontime/planned.tasks.due, 2)) %>% 
-  rename("Week Number" = Week.Number,
-         "Total Planned Tasks Due" = planned.tasks.due,
-         "Planned Complete" = Ontime,
-         "Unplanned Complete" = Unplanned,
-         "Planned Complete Late" = Late,
-         "Complete Early" = Early,
-         "Total Tasks Complete" = Total.Tasks.Complete,
-         "Issues Raised" = Issues.Raised,
-         "Planned Completion Rate" = completion.ratio
-         ) 
-
 wk_report %>% 
-  select(-"Planned Completion Rate") %>% 
-  knitr::kable() %>% 
+ select(-"Completion Rate") %>% 
+  knitr::kable(align = 'c') %>% 
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
     kable_paper(full_width = TRUE) %>%
-  row_spec(0, background = "#008C98", color = "white") %>% 
-  row_spec(task_week_view_behind + 1, background = "grey", color = "white", bold = TRUE)
+  row_spec(0, background = "#008C98", color = "white", align = 'c', extra_css = "vertical- align:middle;", bold = TRUE) %>% 
+  row_spec(task_week_view_behind, background = "#5F6062", color = "white", bold = TRUE)
 
 ```
 
@@ -454,9 +472,8 @@ wk_report %>%
 ```{r fig.align='center', message=FALSE, warning=FALSE, include=FALSE}
 
 tasks_by_week_plot <- tasks_by_week_pivot %>%
-  filter(Week.Number <= next_week 
-        &
-          Week.Number >= "2021-W20"
+  filter(Week.Number < current_week &
+           Week.Number >= "2021-W29"
          ) %>%
   ggplot(aes(x = Week.Number, 
              y = count, 
@@ -475,9 +492,11 @@ tasks_by_week_plot <- tasks_by_week_pivot %>%
 :::
 
 ::: {.center}
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 
-tasks_by_week_plot
+gridExtra::grid.arrange(tasks_by_week_plot, completion_ratio_plt,
+                        ncol = 1,
+                        nrow = 2)
 
 ```
 :::
@@ -502,13 +521,13 @@ open_issues %>%
   tidyr::replace_na(list(Description = "")) %>% 
   mutate(Created.Date = format(Created.Date,  "%d %B %Y")) %>% 
   rename("Issue" = Task.Name,
-         "Assigned To" = Assigned.To,
+         "Assigned" = Assigned.To,
          "Raised On" = Created.Date
          ) %>%
   knitr::kable() %>% 
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
     kable_paper(full_width = TRUE) %>%
-  row_spec(0, background = "#008C98", color = "white") 
+  row_spec(0, background = "#008C98", color = "white", bold = TRUE) 
 ```
 
 \newpage
@@ -559,17 +578,18 @@ late_versus_ontime
 
 \newpage
 
-## WORKLOAD
+# TASK ASSIGNMENt
 
-The following chart represents the number of active tasks assigned to team members. It is important to note that a majority of tasks are shared, meaning that some tasks are counted more than once. There are currently `r number_active_tasks$Active.Tasks` active tasks with an average of `r round(workload_ratio)` active tasks per team member.
+The following chart represents the number of active tasks assigned to team members. It is important to note that a majority of tasks are shared, meaning that some tasks are counted more than once. There are currently `r number_active_tasks$Active.Tasks` active tasks with an average of `r round(workload_ratio)` active tasks per team member (represented by the horizontal yellow line below).
 
 ::: {.center}
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
+
 plot_tasks_assigned_to
+
 ```
 :::
 
 ```{r include=FALSE}
 source(here::here("src", "save to excel.R"))
 ```
-
