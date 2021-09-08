@@ -83,8 +83,10 @@ insertPlot(wb, sheet = 1, xy = c("B", 11), width = 15, height = 10, fileType = "
 print(late_versus_ontime)
 insertPlot(wb, sheet = 1, xy = c("I", 11), width = 15, height = 10, fileType = "png", units = "cm")
 
-print(completion_ratio_plt)
-insertPlot(wb, sheet = 1, xy = c("B", 31), width = 15, height = 9, fileType = "png", units = "cm")
+if(nrow(completion_ratio) > 0) { # If there is enough data to calculate completion ratio otherwise skip
+  print(completion_ratio_plt)
+  insertPlot(wb, sheet = 1, xy = c("B", 31), width = 15, height = 9, fileType = "png", units = "cm")
+}
 
 print(plot_tasks_assigned_to)
 insertPlot(wb, sheet = 1, xy = c("I", 31), width = 15, height = 9, fileType = "png", units = "cm")
@@ -95,16 +97,19 @@ openxlsx::pageSetup(wb, sheet = sheet2.name, orientation = "portrait", fitToWidt
 
 # setHeader(wb, "TASK REPORT", position = "left")
 setHeaderFooter(wb, sheet = sheet1.name, 
-                header = c(paste0('&"Arial"&B&14&K008C98TASK REPORT - ',  toupper(plan_name_to_filter)), 
+                header = c(paste0('&"Arial"&B&14&K008C98TASK REPORT - ',  
+                                  ifelse(length(plan_name_to_filter) > 1, "", toupper(plan_name_to_filter))), 
                                                   NA, 
                                                   NA),
                 footer = c("Printed On: &[Date]", NA, "Page &[Page] of &[Pages]"),)
 
 setHeaderFooter(wb, sheet = sheet2.name, 
-                header = c(paste0('&"Arial"&B&14&K008C98CURRENT ISSUES - ',  toupper(plan_name_to_filter)), 
+                header = c(paste0('&"Arial"&B&14&K008C98CURRENT ISSUES - ',  
+                                  ifelse(length(plan_name_to_filter) > 1, "", toupper(plan_name_to_filter))), 
                            NA, 
                            NA),
                 footer = c("Printed On: &[Date]", NA, "Page &[Page] of &[Pages]"),)
 
 
 saveWorkbook(wb, here::here("output", paste0(Sys.Date(), " Task Report.xlsx")), overwrite = TRUE, returnValue = FALSE)
+

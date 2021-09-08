@@ -66,8 +66,9 @@ current_week <- strftime(Sys.Date(), format = "%Y-W%V")
 last_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) - task_week_view_behind)
 next_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) + task_week_view_ahead)
 
-#plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG", "Ideas Hub") # Used to filter report
-plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG") # Used to filter report
+# plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG", "Ideas Hub", "Mapping & Data Projects", "Annual Plan")
+plan_name_to_filter <- c("Annual Plan")# Used to filter report
+# plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG") # Used to filter report
 
 ppa_cols <- c("#5F6062", "#008C98", "#982623", "#B2B2B1", "#C49E39", 
               "#295775", "#175E62", "#8E9CA3", "#556670", "#000000")
@@ -75,7 +76,7 @@ ppa_cols <- c("#5F6062", "#008C98", "#982623", "#B2B2B1", "#C49E39",
 ```
 
 ---
-title: "`r paste0("TASK REPORT <br>", toupper(plan_name_to_filter), ': WEEK ', lubridate::isoweek(Sys.Date()))`"
+title: "`r paste0("TASK REPORT <br>", ifelse(length(plan_name_to_filter) > 1, "", toupper(plan_name_to_filter)), ': WEEK ', lubridate::isoweek(Sys.Date()))`"
 ---
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -372,6 +373,7 @@ completion_ratio <- tasks_by_week %>%
   mutate(completion.ratio = round(Ontime/planned.tasks.due, 2),
          # Now return the four week rolling mean
          rolling.mean = zoo::rollmean(completion.ratio, k = 4, fill = NA, align = c("right"))) %>% 
+  # tidyr::replace_na(list(completion.ratio = 0)) %>% 
   tidyr::drop_na()
 
 completion_ratio_plt <- ggplot(completion_ratio) +
@@ -401,40 +403,40 @@ completion_ratio_plt <- ggplot(completion_ratio) +
 
 # GANTT Chart -------------------------------------------------------------
 
-dat_gant <- latest_plan %>% ungroup() %>% 
-  filter(Progress != "Completed", 
-         Due.Date >= as.Date(latest_plan_version$Plan.Version)) %>% 
-  select(Bucket.Name, Task.Name, Start.Date, Due.Date, Progress) %>% 
-  rename(wp = Bucket.Name, 
-         activity = Task.Name, 
-         start_date = Start.Date, 
-         end_date = Due.Date,
-         spot_type = Progress) %>% 
-  mutate(start_date = format(as.Date(start_date), "%Y-%m-%d"),
-         end_date = format(as.Date(end_date), "%Y-%m-%d"))
-
-  ganttrify(project = dat_gant, 
-            by_date = TRUE,
-            hide_wp = F,
-            spots = dat_gant$spot_type,
-            size_text_relative = 1, 
-            axis_text_align = "left"
-            ) +
-    ggplot2::labs(title = plan_name,
-                  subtitle = paste0("Plan Version Date: ", 
-                                    format(as.Date(latest_plan_version$Plan.Version), 
-                                           "%d %B %Y")),
-                  caption = "") +
-    ggplot2::geom_vline(xintercept = as.Date(Sys.Date()), 
-                        linetype = "dashed", 
-               color = "black", size = 1) +
-    coord_cartesian(xlim = c(as.Date(Sys.Date()), 
-                           max(as.Date(dat_gant$end_date))))
+# dat_gant <- latest_plan %>% ungroup() %>% 
+#   filter(Progress != "Completed", 
+#          Due.Date >= as.Date(latest_plan_version$Plan.Version)) %>% 
+#   select(Bucket.Name, Task.Name, Start.Date, Due.Date, Progress) %>% 
+#   rename(wp = Bucket.Name, 
+#          activity = Task.Name, 
+#          start_date = Start.Date, 
+#          end_date = Due.Date,
+#          spot_type = Progress) %>% 
+#   mutate(start_date = format(as.Date(start_date), "%Y-%m-%d"),
+#          end_date = format(as.Date(end_date), "%Y-%m-%d"))
+# 
+#   ganttrify(project = dat_gant, 
+#             by_date = TRUE,
+#             hide_wp = F,
+#             spots = dat_gant$spot_type,
+#             size_text_relative = 1, 
+#             axis_text_align = "left"
+#             ) +
+#     ggplot2::labs(title = plan_name,
+#                   subtitle = paste0("Plan Version Date: ", 
+#                                     format(as.Date(latest_plan_version$Plan.Version), 
+#                                            "%d %B %Y")),
+#                   caption = "") +
+#     ggplot2::geom_vline(xintercept = as.Date(Sys.Date()), 
+#                         linetype = "dashed", 
+#                color = "black", size = 1) +
+#     coord_cartesian(xlim = c(as.Date(Sys.Date()), 
+#                            max(as.Date(dat_gant$end_date))))
 ```
 
 # EXECUTIVE SUMMARY
 
-This Task Report summarises information captured by Microsoft Planner's task management software. Data in this report is current up to `r format(as.Date(latest_plan_version$Plan.Version), '%d %B %Y')`.
+This Task Report summarises information captured by Microsoft Planner's task management software. Data in this report is current up to `r format(max(as.Date(latest_plan_version$Plan.Version)), '%d %B %Y')`.
 
 ## Task Progress Overall
 
@@ -494,9 +496,18 @@ tasks_by_week_plot <- tasks_by_week_pivot %>%
 ::: {.center}
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 
-gridExtra::grid.arrange(tasks_by_week_plot, completion_ratio_plt,
+if(nrow(completion_ratio) > 0) {
+  gridExtra::grid.arrange(tasks_by_week_plot, completion_ratio_plt,
                         ncol = 1,
                         nrow = 2)
+} else { # Not enough weeks to calculate completion ratio
+  
+  tasks_by_week_plot
+  
+}
+
+
+
 
 ```
 :::
@@ -537,7 +548,9 @@ open_issues %>%
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 planned_due_this_week <- planned_tasks_due %>% 
   filter(Week.Number.Completed == current_week) %>% 
+  # tidyr::replace_na(list(c()))
   ungroup() %>% 
+  summarise(planned.tasks.due = sum(planned.tasks.due, na.rm = TRUE)) %>% 
   select(planned.tasks.due)
 
 current_late_tasks <- latest_plan %>% 
@@ -546,7 +559,7 @@ current_late_tasks <- latest_plan %>%
   
 ```
 
-This week, there are `r planned_due_this_week` planned tasks due and `r current_late_tasks` late tasks outstanding.
+This week, there are `r as.numeric(planned_due_this_week)` planned tasks due and `r as.numeric(current_late_tasks)` late tasks outstanding.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
@@ -563,11 +576,19 @@ tbl <- latest_plan %>%
   rename("Task Name" = Task.Name, "Assigned To" = Assigned.To) %>% 
   arrange(status)
 
-  kableExtra::kable(tbl[, c(1, 3)]) %>% 
+ kbl <-  kableExtra::kable(tbl[, c(1, 3)]) %>% 
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
-  kable_paper(full_width = TRUE) %>%
+  kable_paper(full_width = TRUE) 
+ 
+ if(length(tbl$status) > 0){
+   kbl %>% 
   kableExtra::pack_rows(index = table(tbl$status), label_row_css = "background-color: #666; color: #fff;") %>% 
      kableExtra::row_spec(0, background = "#008C98", color = "white")
+ } else { # No statuses to report
+   
+ }
+ 
+ 
 ```
 
 ::: {.center}
