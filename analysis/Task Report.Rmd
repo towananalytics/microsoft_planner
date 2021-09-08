@@ -56,30 +56,28 @@ library(ggplot2)
 library(dplyr)
 library(kableExtra)
 library(zoo)
+library(plotly)
 
 # Parameters --------------------------------------------------------------
 
 task_week_view_ahead <- 2 # Number of week(s) beyond and behind current week
 task_week_view_behind <- 2 # Number of week(s) behind current week
 
+interactive <-  TRUE # Use interactive charts with plotly
+
 current_week <- strftime(Sys.Date(), format = "%Y-W%V")
 last_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) - task_week_view_behind)
 next_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) + task_week_view_ahead)
 
 # plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG", "Ideas Hub", "Mapping & Data Projects", "Annual Plan")
-plan_name_to_filter <- c("Annual Plan")# Used to filter report
+# plan_name_to_filter <- c("Annual Plan")# Used to filter report
 # plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG") # Used to filter report
+
+ plan_name_to_filter <- NULL
 
 ppa_cols <- c("#5F6062", "#008C98", "#982623", "#B2B2B1", "#C49E39", 
               "#295775", "#175E62", "#8E9CA3", "#556670", "#000000")
 
-```
-
----
-title: "`r paste0("TASK REPORT <br>", ifelse(length(plan_name_to_filter) > 1, "", toupper(plan_name_to_filter)), ': WEEK ', lubridate::isoweek(Sys.Date()))`"
----
-
-```{r message=FALSE, warning=FALSE, include=FALSE}
 # Import Data -------------------------------------------------------------
 
 data_path <- here::here("data", "MS Planner Exports")
@@ -117,14 +115,32 @@ for(i in seq_along(files)){
   
 }
 
+if(is.null(plan_name_to_filter)){ # If a plan name is not selected
+  
+  plan_name_to_filter <- unique(temp$Plan.Name)
+  
+} else { 
+  
+  plan_name_to_filter <- plan_name_to_filter
+  
+}
+
 ```
+
+---
+title: "`r paste0("TASK REPORT <br>", ifelse(length(plan_name_to_filter) > 1, "", toupper(plan_name_to_filter)), ' WEEK ', lubridate::isoweek(Sys.Date()))`"
+---
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 
 plan.names <- data.frame(Plan.ID = unique(temp$Plan.ID),
                          Plan.Name = unique(temp$Plan.Name))
 
-temp <- temp %>% mutate(Week.Number.Version = strftime(Plan.Version, format = "%Y-W%V"),
+temp <- temp %>% tidyr::separate(Completed.Checklist.Items, 
+                                 sep = "/", 
+                                 into = c("done", "planned"), 
+                                 convert = TRUE) %>% 
+                 mutate(Week.Number.Version = strftime(Plan.Version, format = "%Y-W%V"),
                         Completed.Date = lubridate::parse_date_time(Completed.Date, orders = c("mdY")),
                         Week.Number.Completed = strftime(Completed.Date, format = "%Y-W%V"),
                         Created.Date = lubridate::parse_date_time(Created.Date, orders = c("mdY")),
@@ -133,7 +149,10 @@ temp <- temp %>% mutate(Week.Number.Version = strftime(Plan.Version, format = "%
                         Due.Date = lubridate::parse_date_time(Due.Date, orders = c("mdY")),
                         Week.Number.Due = strftime(Due.Date, format = "%Y-W%V"),
                         Start.Date = case_when(is.na(Start.Date) ~ Created.Date,
-                                               TRUE ~ Start.Date))
+                                               TRUE ~ Start.Date),
+                        task.progress = round(done / planned, 2)) %>% 
+  tidyr::replace_na(list(task.progress = 0))
+  
 
 all_planner_tasks <- temp
 
@@ -148,15 +167,18 @@ latest_plan_version <- all_planner_tasks %>%
 
 latest_plan <- all_planner_tasks %>% 
   group_by(Plan.ID) %>% 
-  filter(Plan.Version == max(Plan.Version)) %>% 
+  filter(Plan.Version == max(Plan.Version),
+         Plan.Name %in% plan_name_to_filter) %>% 
    ungroup()
 
-# Look up the Plan.ID based on the plan_name_to_filter values entered in parameters:
-selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"), 
-                                          latest_plan_version$Plan.Name), 1])
+plan_names <- unique(latest_plan[, c("Plan.ID", "Plan.Name")])
 
-selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"), 
+# Look up the Plan.ID based on the plan_name_to_filter values entered in parameters:
+selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"),
                                                     latest_plan_version$Plan.Name), 1])
+# 
+# selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"),
+#                                                     latest_plan_version$Plan.Name), 1])
 
 unique_tasks <- all_planner_tasks %>% select(Task.ID) %>% 
   distinct()
@@ -188,9 +210,14 @@ tasks_over_time <- ggplot(data = tasks_per_week, aes(x = Week.Number.Version, fi
          y = "Total Tasks") +
   scale_fill_manual(values = ppa_cols) +
     geom_bar() +
-   # facet_wrap(~factor(Plan.Name)) +
     theme_bw() + 
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+if(length(plan_name_to_filter) > 1){
+  
+   tasks_over_time <- tasks_over_time + facet_wrap(~factor(Plan.Name))
+  
+}
 
 number_active_tasks <- tasks_per_week %>% 
   filter(Plan.Version == latest_plan_version$Plan.Version,
@@ -214,7 +241,7 @@ plot_tasks_assigned_to <- tasks_by_person %>%
   filter(Progress != "Completed") %>% 
   mutate(Late = case_when(Late == "false" ~ "No",
                           TRUE ~ "Yes")) %>% 
-  group_by(Assigned.To, Late) %>% 
+  group_by(Plan.Name, Assigned.To, Late) %>% 
   count() %>% 
   rename("Active.Tasks" = n) %>% 
   group_by(Assigned.To) %>% 
@@ -228,6 +255,12 @@ plot_tasks_assigned_to <- tasks_by_person %>%
        y = "Count of Active Tasks") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+if(length(plan_name_to_filter) > 1){
+  
+   plot_tasks_assigned_to <- plot_tasks_assigned_to + facet_wrap(~factor(Plan.Name))
+  
+}
 
 
 # Late Tasks ----------------------------------
@@ -347,6 +380,8 @@ wk_report <- current_week_report %>%
                          )) %>% 
   mutate(completion.ratio = round(Ontime/planned.tasks.due, 2),
          completion.percent = scales::percent(Ontime/planned.tasks.due, accuracy = 1)) %>% 
+  tidyr::replace_na(list(completion.ratio = 0,
+                         completion.percent = 0)) %>% 
   rename("Week Number" = Week.Number,
          "Total Planned Tasks Due" = planned.tasks.due,
          "Planned Complete" = Ontime,
@@ -359,11 +394,12 @@ wk_report <- current_week_report %>%
          "Completion Percentage" = completion.percent
          ) 
 
-tasks_by_week_pivot <- tasks_by_week %>% 
-  select(!c(planned.tasks.due, Total.Tasks.Complete, Issues.Raised)) %>% 
-  tidyr::pivot_longer(!Week.Number:Plan.ID, 
-                      names_to = "Completed Status", 
-                      values_to = "count")
+tasks_by_week_pivot <- tasks_by_week %>%
+  select(!c(planned.tasks.due, Total.Tasks.Complete, Issues.Raised)) %>%
+  tidyr::pivot_longer(!Week.Number:Plan.ID,
+                      names_to = "Completed Status",
+                      values_to = "count") %>% 
+  left_join(plan_names)
 
 completion_ratio <- tasks_by_week %>% 
   ungroup() %>% 
@@ -446,8 +482,12 @@ The following chart represents Microsoft Planner data by the week that data was 
 
 ::: {.center}
 ```{r echo=FALSE, fig.align='center'}
+if(interactive == TRUE){
+  plotly::ggplotly(tasks_over_time)
+} else {
+  tasks_over_time
+}
 
-tasks_over_time
 
 ```
 :::
@@ -490,19 +530,50 @@ tasks_by_week_plot <- tasks_by_week_pivot %>%
   theme_bw() + 
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
+if(length(plan_name_to_filter) > 1){
+  
+   tasks_by_week_plot <- tasks_by_week_plot + facet_wrap(~factor(Plan.Name))
+  
+}
+
 ```
 :::
 
 ::: {.center}
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 
+
+
 if(nrow(completion_ratio) > 0) {
-  gridExtra::grid.arrange(tasks_by_week_plot, completion_ratio_plt,
+  
+  if(interactive == TRUE){
+    
+  p1 <- plotly::ggplotly(tasks_by_week_plot)
+  p2 <- plotly::ggplotly(completion_ratio_plt)
+  plotly::subplot(p1, p2, nrows = 2)
+  
+} else {
+  
+    gridExtra::grid.arrange(tasks_by_week_plot, completion_ratio_plt,
                         ncol = 1,
                         nrow = 2)
+  
+}
+  
+
 } else { # Not enough weeks to calculate completion ratio
   
+    if(interactive == TRUE){
+      
+      plotly::ggplotly(tasks_by_week_plot)
+
+} else {
+  
   tasks_by_week_plot
+  
+}
+  
+  
   
 }
 
@@ -593,7 +664,18 @@ tbl <- latest_plan %>%
 
 ::: {.center}
 ```{r echo=FALSE, fig.align='center'}
-late_versus_ontime
+
+  if(interactive == TRUE){
+    
+    plotly::ggplotly(late_versus_ontime)
+  
+  } else {
+    
+    late_versus_ontime
+    
+  }
+
+
 ```
 :::
 
@@ -606,7 +688,17 @@ The following chart represents the number of active tasks assigned to team membe
 ::: {.center}
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-plot_tasks_assigned_to
+  if(interactive == TRUE){
+    
+    plotly::ggplotly(plot_tasks_assigned_to)
+  
+  } else {
+    
+    plot_tasks_assigned_to
+    
+  }
+
+
 
 ```
 :::
