@@ -476,7 +476,7 @@ This Task Report summarises information captured by Microsoft Planner's task man
 
 ## Task Progress Overall
 
-During the previous reporting week (`r wk_report[2, 1]`), **`r wk_report[2, 10]`** of planned tasks were completed on-time, with a four week rolling average completion rate of **`r  scales::percent(as.numeric(completion_ratio[6, 11]))`**.
+During the previous reporting week (`r wk_report[2, 1]`), **`r wk_report[2, 10]`** of planned tasks were completed on-time, with a four week rolling average completion rate of **`r  scales::percent(as.numeric(completion_ratio[nrow(completion_ratio), 11]))`**.
 
 The following chart represents Microsoft Planner data by the week that data was exported. The chart shows a snapshot of cumulative tasks over time since the first data export. There are currently **`r number_active_tasks$Active.Tasks` active tasks** which includes "In Progress" and "Not Started" items.
 
