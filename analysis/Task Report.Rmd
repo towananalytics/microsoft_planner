@@ -73,7 +73,7 @@ next_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Da
 # plan_name_to_filter <- c("Annual Plan")# Used to filter report
 # plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG") # Used to filter report
 
- plan_name_to_filter <- NULL
+plan_name_to_filter <- NULL
 
 ppa_cols <- c("#5F6062", "#008C98", "#982623", "#B2B2B1", "#C49E39", 
               "#295775", "#175E62", "#8E9CA3", "#556670", "#000000")
@@ -473,6 +473,32 @@ completion_ratio_plt <- ggplot(completion_ratio) +
 # EXECUTIVE SUMMARY
 
 This Task Report summarises information captured by Microsoft Planner's task management software. Data in this report is current up to `r format(max(as.Date(latest_plan_version$Plan.Version)), '%d %B %Y')`.
+
+## Task Management Using Microsoft Planner
+
+For the purpose of this report and the general approach to its preparation, a task is considered to be something that results in a deliverable or other tangible outcome that can be tracked. 
+
+Examples of a task include:
+
+* Preparation and completion of reports / management plans
+* Actions leading up to a decision (record of the decision becomes the outcome)
+* Preparing for a meeting or presentation that the individual is Chairing (the meeting or presentation is the outcome)
+* Site visits / inspections lasting more than one hour.
+    
+Non-task related items include:
+
+* Phone calls
+* Normal meetings than run for one hour or less (where individuals are attendees)
+* Replying to emails.
+
+### Task Management Steps Within Microsoft Planner
+
+Tasks are managed in Planner as follows:
+
+1) Tasks are assigned only to people who are actively responsible for the outcome (i.e. multiple people can be assigned the same task).
+2) The due date should be set according to when the outcome will be completed.
+3) Long lead tasks can be identified and scheduled well in advance, their Progress status should be set to *Not Started*, until such time that work commences to deliver the outcome. 
+4) Tasks are complete when the outcome has been delivered.
 
 ## Task Progress Overall
 
