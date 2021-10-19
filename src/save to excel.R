@@ -5,11 +5,13 @@ library(openxlsx)
 wb <- openxlsx::createWorkbook()
 
 specific.labels <- "ToPH" # Case sensitive multiple labels can be included by using | operator -> "ToPH|Issue|ExCo"
-sheet.names <- c("Task Summary", "Issues", "ToPH Action Items", "All Tasks")
+sheet.names <- c("Task Summary", "Issues", "ToPH Action Items", "All Tasks") # Need to be in order of sheets
 start.cols <- c(4, 1, 2, 2) # Where the tables should start for each of the above sheets
 start.rows <- c(4, 4, 4, 4)
-sheet1.name <- "Task Summary"
-sheet2.name <- "Issues"
+sheet1.name <- sheet.names[1] # "Task Summary"
+sheet2.name <- sheet.names[2] # "Issues"
+sheet3.name <- sheet.names[3] # "ToPH Action Items"
+sheet4.name <- sheet.names[4] # "All Tasks"
 
 issues <- open_issues %>% 
   select(Task.Name, Description, Assigned.To) %>% 
@@ -26,7 +28,9 @@ specific_actions <- latest_plan %>%
   select(Task.Name, Description, Progress, Assigned.To, Due.Date) 
   
 
-plan <- latest_plan %>% select(Task.Name, Description, Progress, Assigned.To, Due.Date)
+plan <- latest_plan %>% 
+  select(Task.Name, Description, Progress, Assigned.To, Due.Date) %>% 
+  arrange(desc(Progress))
 
 report_list <- list(wk_report, issues, specific_actions, plan)
 
@@ -46,11 +50,6 @@ headerStyle.issues <- openxlsx::createStyle(
   fontSize = 11, fontColour = "#FFFFFF", halign = "left", valign = "center",
   fgFill = ppa_cols[2], border = "TopBottom", borderColour = "#4F81BD", wrapText = TRUE
 )
-
-## style for body
-# bodyStyle.issues <- openxlsx::createStyle(
-#   border = "TopBottom", borderColour = "#4F81BD", valign = "center", halign = "left", wrapText = TRUE
-# )
 
 highlight.row <- openxlsx::createStyle(
   fontSize = 11, fontColour = "#FFFFFF", halign = "center",
@@ -89,12 +88,6 @@ for(i in seq_along(sheet.names)){
 }
 
 # Insert Tabs
-# addWorksheet(wb, sheet1.name, gridLines = FALSE)
-# addWorksheet(wb, sheet2.name, gridLines = FALSE)
-
-# Populate with data
-# openxlsx::writeData(wb = wb, x = wk_report, startCol = 4, startRow = 4, borders = "rows", sheet = sheet1.name)
-# openxlsx::writeData(wb = wb, x = issues, startCol = 1, startRow = 4, borders = "rows", sheet = sheet2.name)
 
 # Format layouts and styles
 
@@ -102,15 +95,17 @@ setColWidths(wb, sheet1.name, cols = c(4, 5, 6, 7, 8, 9, 10, 11, 12), widths = c
 
 setColWidths(wb, sheet2.name, cols = c(1, 2, 3), widths = c(30, 55, 18))
 
-#openxlsx::addStyle(wb, sheet = sheet1.name, style = headerStyle, rows = 4, cols = c(4:12), gridExpand = FALSE, stack = TRUE)
+setColWidths(wb, sheet3.name, cols = c(2:6), widths = c(30, 55, 18, 18, 18))
+
+setColWidths(wb, sheet4.name, cols = c(2:6), widths = c(30, 55, 18, 18, 18))
+
 openxlsx::addStyle(wb, sheet = sheet1.name, style = highlight.row, rows = 6, cols = c(4:12), gridExpand = FALSE, stack = TRUE)
 openxlsx::addStyle(wb, sheet = sheet1.name, style = underline.header, rows = 1, cols = c(1:15), gridExpand = FALSE, stack = TRUE)
 openxlsx::addStyle(wb, sheet = sheet1.name, style = createStyle(numFmt = "##0%"), rows = c(5:9), cols = c(12), gridExpand = FALSE, stack = TRUE)
-# openxlsx::addStyle(wb, sheet = sheet1.name, style = bodyStyle, rows = c(5:9), cols = c(4:12), gridExpand = TRUE, stack = TRUE)
+openxlsx::addStyle(wb, sheet = sheet3.name, style = createStyle(numFmt = "DATE"), rows = c(5:500), cols = c(6), gridExpand = FALSE, stack = TRUE)
+openxlsx::addStyle(wb, sheet = sheet4.name, style = createStyle(numFmt = "DATE"), rows = c(5:500), cols = c(6), gridExpand = FALSE, stack = TRUE)
 
-# openxlsx::addStyle(wb, sheet = sheet2.name, style = bodyStyle.issues, rows = c(5:(4 + nrow(issues))), cols = c(1:3), gridExpand = TRUE)
 openxlsx::addStyle(wb, sheet = sheet2.name, style = underline.header, rows = 1, cols = c(1:3), gridExpand = TRUE)
-#openxlsx::addStyle(wb, sheet = sheet2.name, style = headerStyle.issues, rows = 4, cols = c(1:3), gridExpand = TRUE)
 
 print(tasks_over_time)
 insertPlot(wb, sheet = 1, xy = c("B", 11), width = 15, height = 10, fileType = "png", units = "cm")
@@ -129,11 +124,12 @@ insertPlot(wb, sheet = 1, xy = c("I", 31), width = 15, height = 9, fileType = "p
 # Format Summary page layout
 openxlsx::pageSetup(wb, sheet = sheet1.name, orientation = "landscape", paperSize = 8)
 openxlsx::pageSetup(wb, sheet = sheet2.name, orientation = "portrait", fitToWidth = TRUE)
+openxlsx::pageSetup(wb, sheet = sheet3.name, orientation = "portrait", fitToWidth = TRUE)
+openxlsx::pageSetup(wb, sheet = sheet4.name, orientation = "portrait", fitToWidth = TRUE)
 
-# setHeader(wb, "TASK REPORT", position = "left")
 setHeaderFooter(wb, sheet = sheet1.name, 
                 header = c(paste0('&"Arial"&B&14&K008C98TASK REPORT - ',  
-                                  ifelse(length(plan_name_to_filter) > 1, "", toupper(plan_name_to_filter))), 
+                                  ifelse(length(plan_name_to_filter) > 1, "", paste0(toupper(plan_name_to_filter), "\nWEEK NUMBER ", current_week))), 
                                                   NA, 
                                                   NA),
                 footer = c("Printed On: &[Date]", NA, "Page &[Page] of &[Pages]"),)
@@ -141,6 +137,20 @@ setHeaderFooter(wb, sheet = sheet1.name,
 setHeaderFooter(wb, sheet = sheet2.name, 
                 header = c(paste0('&"Arial"&B&14&K008C98CURRENT ISSUES - ',  
                                   ifelse(length(plan_name_to_filter) > 1, "", toupper(plan_name_to_filter))), 
+                           NA, 
+                           NA),
+                footer = c("Printed On: &[Date]", NA, "Page &[Page] of &[Pages]"),)
+
+setHeaderFooter(wb, sheet = sheet3.name, 
+                header = c(paste0('&"Arial"&B&14&K008C98',  
+                                  ifelse(length(plan_name_to_filter) > 1, "", paste0(toupper(plan_name_to_filter), "\nTOWN OF PORT HEDLAND ACTIONS"))), 
+                           NA, 
+                           NA),
+                footer = c("Printed On: &[Date]", NA, "Page &[Page] of &[Pages]"),)
+
+setHeaderFooter(wb, sheet = sheet4.name, 
+                header = c(paste0('&"Arial"&B&14&K008C98',  
+                                  ifelse(length(plan_name_to_filter) > 1, "", paste0(toupper(plan_name_to_filter), "\nALL PLANNER TASKS"))), 
                            NA, 
                            NA),
                 footer = c("Printed On: &[Date]", NA, "Page &[Page] of &[Pages]"),)

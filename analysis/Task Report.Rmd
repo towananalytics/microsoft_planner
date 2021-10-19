@@ -50,7 +50,7 @@ htmltools::img(src = knitr::image_uri(here::here("images", "PPA Logo.gif")),
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 #remotes::install_github("giocomai/ganttrify", dependencies = TRUE)
-library(ganttrify)
+#library(ganttrify)
 library(openxlsx)
 library(ggplot2)
 library(dplyr)
@@ -84,33 +84,57 @@ data_path <- here::here("data", "MS Planner Exports")
 
 files <- list.files(data_path, pattern = "*.xlsx", full.names = TRUE)
 
+
+
 temp <- NULL
 
 for(i in seq_along(files)){
   
-  xl_file <- readxl::read_xlsx(path = files[i])
-  
-  file.info(files[i])$mtime
-  
-  plan_id <- as.character(xl_file[1, 2])
-  
-  plan_name <- names(xl_file)[2]
-  
-  # Extract the file modification date/time from the file info:
+   # Extract the file modification date/time from the file info:
   planner_version <- file.info(files[i])$mtime
   
-  col_names <- make.names(xl_file[4, ])
+  xl_file <- readxl::read_xlsx(path = files[i])
   
-  xl_file <- xl_file[-1:-4, ]
+  # file.info(files[i])$mtime
   
-  xl_file$plan_version <- planner_version
-  
-  xl_file$plan_id <- plan_id
-  
-  xl_file$Plan.Name <- plan_name
-  
-  names(xl_file) <- c(col_names, "Plan.Version", "Plan.ID", "Plan.Name")
-  
+  if(names(xl_file[1]) != "Task ID"){ # Older style of Planner Export - all on one page:
+    
+    plan_id <- as.character(xl_file[1, 2])
+    plan_name <- names(xl_file)[2]
+    
+    xl_file$plan_version <- planner_version
+    
+    xl_file$Plan.ID <- plan_id
+    
+    xl_file$Plan.Name <- plan_name
+    
+    col_names <- make.names(xl_file[4, ])
+    
+    xl_file <- xl_file[-1:-4, ]
+    
+    names(xl_file) <- c(col_names[1:17], "Plan.Version", "Plan.ID", "Plan.Name")
+    
+  } else { # New planner export format - data on two spreadsheet tabs
+    
+    xl_file_2 <- readxl::read_xlsx(path = files[i], sheet = 2) # second tab of new format
+    
+    xl_file$Plan.Version <- planner_version
+    
+    xl_file$Plan.ID <- as.character(xl_file_2[1, 2])
+
+    plan_name <- as.character(names(xl_file_2)[2])
+    
+    xl_file$Plan.Name <- plan_name
+    
+    col_names <- make.names(names(xl_file))
+    col_names <- sub("_", ".", col_names)
+    
+    names(xl_file) <- col_names
+    
+    xl_file <- as.data.frame(xl_file)
+    
+  }
+
   temp <- rbind(temp, xl_file)
   
 }
@@ -619,9 +643,21 @@ open_issues <- filtered_latest_plan %>%
   filter(stringr::str_detect(Labels, "Issue", negate = FALSE),
          Progress != "Completed")
 
+number_of_issues <- nrow(open_issues)
+
+if(number_of_issues > 1){
+  
+  issue_summary_text <- paste0("There are ", number_of_issues, " open issues, summarised in the following table.")
+  
+} else {
+  
+  issue_summary_text <- paste0("There is ", number_of_issues, " open issue, summarised in the following table.")
+  
+}
+
 ```
 
-There are `r nrow(open_issues)` open issues, summarised in the following table.
+`r issue_summary_text` 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 open_issues %>% 
