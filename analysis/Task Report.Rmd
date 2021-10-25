@@ -21,6 +21,7 @@ htmltools::img(src = knitr::image_uri(here::here("images", "PPA Logo.gif")),
 
 <hr>
 
+
 ```{css, echo=FALSE}
 # Control the alignment of charts/figures:
 .center {
@@ -36,6 +37,9 @@ htmltools::img(src = knitr::image_uri(here::here("images", "PPA Logo.gif")),
 @media print {
     .page-break { display: block; break-after: page; }
 }
+
+# Include the following in the body of the markdown document to show a watermark
+# <div class="watermark">DRAFT</div>
 
 # @TOC {
 #   right: 270px;
@@ -94,9 +98,7 @@ for(i in seq_along(files)){
   planner_version <- file.info(files[i])$mtime
   
   xl_file <- readxl::read_xlsx(path = files[i])
-  
-  # file.info(files[i])$mtime
-  
+
   if(names(xl_file[1]) != "Task ID"){ # Older style of Planner Export - all on one page:
     
     plan_id <- as.character(xl_file[1, 2])
@@ -200,9 +202,6 @@ plan_names <- unique(latest_plan[, c("Plan.ID", "Plan.Name")])
 # Look up the Plan.ID based on the plan_name_to_filter values entered in parameters:
 selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"),
                                                     latest_plan_version$Plan.Name), 1])
-# 
-# selected_plan <- as_tibble(latest_plan_version[grep(paste(plan_name_to_filter, collapse="|"),
-#                                                     latest_plan_version$Plan.Name), 1])
 
 unique_tasks <- all_planner_tasks %>% select(Task.ID) %>% 
   distinct()
@@ -743,7 +742,7 @@ tbl <- latest_plan %>%
 
 \newpage
 
-# TASK ASSIGNMENt
+# TASK ASSIGNMENT
 
 The following chart represents the number of active tasks assigned to team members. It is important to note that a majority of tasks are shared, meaning that some tasks are counted more than once. There are currently `r number_active_tasks$Active.Tasks` active tasks with an average of `r round(workload_ratio)` active tasks per team member (represented by the horizontal yellow line below).
 
