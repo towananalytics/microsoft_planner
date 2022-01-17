@@ -70,8 +70,10 @@ task_week_view_behind <- 2 # Number of week(s) behind current week
 interactive <-  TRUE # Use interactive charts with plotly
 
 current_week <- strftime(Sys.Date(), format = "%Y-W%V")
-last_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) - task_week_view_behind)
-next_week <- paste0(lubridate::year(Sys.Date()), "-W", lubridate::isoweek(Sys.Date()) + task_week_view_ahead)
+last_week <- paste0(lubridate::year(Sys.Date()), sprintf("-W%02d", (lubridate::isoweek(Sys.Date())) - task_week_view_behind))
+
+
+next_week <- paste0(lubridate::year(Sys.Date()), sprintf("-W%02d", (lubridate::isoweek(Sys.Date())) + task_week_view_ahead))
 
 # plan_name_to_filter <- c("PID840 – Spoilbank Marina PMG", "Ideas Hub", "Mapping & Data Projects", "Annual Plan")
 # plan_name_to_filter <- c("Annual Plan")# Used to filter report
@@ -299,7 +301,7 @@ late_versus_ontime <- ggplot(data = proportion_late_over_time, aes(x = Week.Numb
     labs(title = "Percentage of Late Tasks",
          x = "Plan Version Week",
          y = "Total Tasks") +
-    geom_bar(position = "fill",stat = "identity") +
+    geom_bar(position = "fill", stat = "identity") +
     scale_y_continuous(labels = scales::percent_format()) +
     scale_fill_manual(values = ppa_cols) +
     theme_bw() +
@@ -310,13 +312,13 @@ late_versus_ontime <- ggplot(data = proportion_late_over_time, aes(x = Week.Numb
 filtered_latest_plan <- latest_plan %>% 
   filter(Plan.ID %in% selected_plan$Plan.ID)
 
-min_start_date <- min(c(min(filtered_latest_plan$Due.Date), 
-                        min(filtered_latest_plan$Created.Date),
-                        min(filtered_latest_plan$Completed.Date)), na.rm = TRUE)
+min_start_date <- min(c(min(filtered_latest_plan$Due.Date, na.rm = TRUE), 
+                        min(filtered_latest_plan$Created.Date, na.rm = TRUE),
+                        min(filtered_latest_plan$Completed.Date, na.rm = TRUE)), na.rm = TRUE)
 
-max_end_date <- max(c(max(filtered_latest_plan$Due.Date), 
-                      max(filtered_latest_plan$Created.Date), 
-                      max(filtered_latest_plan$Completed.Date)), na.rm = TRUE)
+max_end_date <- max(c(max(filtered_latest_plan$Due.Date, na.rm = TRUE), 
+                      max(filtered_latest_plan$Created.Date, na.rm = TRUE), 
+                      max(filtered_latest_plan$Completed.Date, na.rm = TRUE)), na.rm = TRUE)
   
 weeks <- data.frame(Week.Number.Completed = strftime(seq(as.Date(min_start_date), as.Date(max_end_date), by = "week"), format = "%Y-W%V"))
 
