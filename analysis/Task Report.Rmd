@@ -169,12 +169,12 @@ temp <- temp %>% tidyr::separate(Completed.Checklist.Items,
                                  into = c("done", "planned"), 
                                  convert = TRUE) %>% 
                  mutate(Week.Number.Version = strftime(Plan.Version, format = "%Y-W%V"),
-                        Completed.Date = lubridate::parse_date_time(Completed.Date, orders = c("mdY")),
+                        Completed.Date = lubridate::parse_date_time(Completed.Date, orders = c("mdY", "dmY")),
                         Week.Number.Completed = strftime(Completed.Date, format = "%Y-W%V"),
-                        Created.Date = lubridate::parse_date_time(Created.Date, orders = c("mdY")),
+                        Created.Date = lubridate::parse_date_time(Created.Date, orders = c("mdY", "dmY")),
                         Week.Number.Created = strftime(Created.Date, format = "%Y-W%V"),
-                        Start.Date = lubridate::parse_date_time(Start.Date, orders = c("mdY")),
-                        Due.Date = lubridate::parse_date_time(Due.Date, orders = c("mdY")),
+                        Start.Date = lubridate::parse_date_time(Start.Date, orders = c("mdY", "dmY")),
+                        Due.Date = lubridate::parse_date_time(Due.Date, orders = c("mdY", "dmY")),
                         Week.Number.Due = strftime(Due.Date, format = "%Y-W%V"),
                         Start.Date = case_when(is.na(Start.Date) ~ Created.Date,
                                                TRUE ~ Start.Date),
@@ -376,6 +376,8 @@ tasks_kpis <- weeks %>%
   left_join(planned_tasks_complete_early) %>% 
   rename(Week.Number = Week.Number.Completed)
 
+tasks_kpis$Plan.ID = selected_plan$Plan.ID
+
 tasks_by_week <- tasks_kpis %>% 
   rowwise() %>% 
   mutate(Total.Tasks.Complete = sum(c_across(Ontime:Early), na.rm = TRUE)) %>% 
@@ -387,7 +389,7 @@ tasks_by_week <- tasks_kpis %>%
                          Early = 0,
                          Total.Tasks.Complete = 0,
                          Issues.Raised = 0
-                         ))
+                         )) 
 
 current_week_report <- tasks_by_week  %>% 
   filter(Week.Number >= last_week &
@@ -403,8 +405,8 @@ wk_report <- current_week_report %>%
                          Total.Tasks.Complete = 0,
                          Issues.Raised = 0
                          )) %>% 
-  mutate(completion.ratio = round(Ontime/planned.tasks.due, 2),
-         completion.percent = scales::percent(Ontime/planned.tasks.due, accuracy = 1)) %>% 
+   mutate(completion.ratio = round(Ontime/planned.tasks.due, 2),
+          completion.percent = Ontime/planned.tasks.due) %>% 
   tidyr::replace_na(list(completion.ratio = 0,
                          completion.percent = 0)) %>% 
   rename("Week Number" = Week.Number,
@@ -415,9 +417,11 @@ wk_report <- current_week_report %>%
          "Complete Early" = Early,
          "Total Tasks Complete" = Total.Tasks.Complete,
          "Issues Raised" = Issues.Raised,
-         "Completion Rate" = completion.ratio,
-         "Completion Percentage" = completion.percent
-         ) 
+         "Completion Rate" = completion.ratio#,
+        # "Completion Percentage" = completion.percent
+         ) %>% 
+  mutate(completion.percent = scales::percent(completion.percent, accuracy = 1)) %>% 
+  rename( "Completion Percentage" = completion.percent)
 
 tasks_by_week_pivot <- tasks_by_week %>%
   select(!c(planned.tasks.due, Total.Tasks.Complete, Issues.Raised)) %>%
